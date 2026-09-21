@@ -1,0 +1,4 @@
+# Raw Domino's reports contain full employee names and employee codes - keep them local.
+data/*.xlsx
+data/daily/*.xlsx
+__pycache__/

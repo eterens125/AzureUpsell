@@ -1,0 +1,443 @@
+<title>Azure Upsell Leaderboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Oswald:wght@700&family=Karla:wght@600&display=swap">
+<style>
+:root{
+  --ground:#EEF3F9;
+  --surface:#FFFFFF;
+  --ink:#0B2440;
+  --muted:#586C86;
+  --line:#D3DDEA;
+  --azure:#0A5CAD;
+  --azure-soft:#DCE9F7;
+  --hero:#0B2A4F;
+  --hero-ink:#F2F7FD;
+  --hero-muted:#9DB6D3;
+  --gold:#F2B233;
+  --gold-ink:#8A5A00;
+  --cell:10,92,173;
+  --display:'Barlow Condensed','Arial Narrow',sans-serif;
+  --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#08121F; --surface:#0F1E33; --ink:#E6EEF8; --muted:#8FA5C0; --line:#22384F;
+    --azure:#4C9BE8; --azure-soft:#173352; --hero:#123761; --hero-ink:#F2F7FD; --hero-muted:#A9C1DD;
+    --gold:#F2B233; --gold-ink:#F2B233; --cell:76,155,232;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#08121F; --surface:#0F1E33; --ink:#E6EEF8; --muted:#8FA5C0; --line:#22384F;
+  --azure:#4C9BE8; --azure-soft:#173352; --hero:#123761; --hero-ink:#F2F7FD; --hero-muted:#A9C1DD;
+  --gold:#F2B233; --gold-ink:#F2B233; --cell:76,155,232;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;padding-inline:clamp(16px,4vw,40px);padding-block:28px 56px}
+.wrap{max-width:1080px;margin-inline:auto;display:flex;flex-direction:column;gap:36px}
+h1,h2,h3{font-family:var(--display);font-weight:700;margin:0;letter-spacing:.01em;text-wrap:balance}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--azure);outline-offset:2px}
+
+.brand-banner{line-height:0}
+.brand-banner svg{width:100%;height:auto;display:block;border-radius:12px;box-shadow:0 1px 2px rgba(11,23,51,.15),0 6px 18px rgba(11,23,51,.12)}
+/* masthead */
+.mast{display:flex;flex-direction:column;gap:6px}
+.mast h1{font-size:clamp(38px,7vw,60px);line-height:1;text-transform:uppercase}
+.mast p{margin:0;color:var(--muted)}
+
+/* hero */
+.hero{background:var(--hero);color:var(--hero-ink);border-radius:14px;padding:clamp(20px,4vw,36px);display:grid;grid-template-columns:1.6fr 1fr;gap:28px 40px}
+.hero .eyebrow{color:var(--hero-muted)}
+.hero .leader{font-family:var(--display);font-weight:700;text-transform:uppercase;font-size:clamp(44px,9vw,88px);line-height:.95;margin:10px 0 6px;color:var(--hero-ink)}
+.hero .where{color:var(--hero-muted);margin:0 0 20px}
+.stats{display:flex;flex-wrap:wrap;gap:12px 32px}
+.stat b{display:block;font-family:var(--display);font-size:38px;line-height:1;font-weight:700;color:var(--gold)}
+.stat span{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--hero-muted)}
+.hero .side{border-left:1px solid rgba(255,255,255,.18);padding-left:36px;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.hero .side .big{font-family:var(--display);font-weight:700;font-size:clamp(40px,6vw,56px);line-height:1}
+.hero .side p{margin:0;color:var(--hero-muted)}
+@media (max-width:760px){
+  .hero{grid-template-columns:1fr}
+  .hero .side{border-left:0;border-top:1px solid rgba(255,255,255,.18);padding:20px 0 0}
+}
+
+/* group strip */
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.strip div{background:var(--surface);padding:14px 16px}
+.strip b{display:block;font-family:var(--display);font-size:32px;line-height:1.05;font-weight:700}
+.strip span{font-size:12px;color:var(--muted)}
+
+/* section heads */
+.sec-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:14px}
+.sec-head h2{font-size:30px;text-transform:uppercase}
+.sec-head p{margin:2px 0 0;color:var(--muted);font-size:13px;max-width:60ch}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{font:inherit;font-size:13px;font-weight:500;padding:7px 14px;border:0;background:transparent;color:var(--muted);cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--azure);color:#fff}
+
+/* ranked rows */
+.board{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px 18px}
+.row{display:grid;grid-template-columns:34px 1fr auto;column-gap:14px;row-gap:6px;padding:14px 0;border-top:1px solid var(--line);align-items:baseline}
+.row:first-child{border-top:0}
+.rank{font-family:var(--display);font-size:26px;font-weight:700;color:var(--muted);line-height:1}
+.row.first .rank{color:var(--gold-ink)}
+.who{font-weight:600;font-size:16px;min-width:0}
+.who small{font-weight:400;color:var(--muted);font-size:13px;margin-left:8px}
+.val{font-family:var(--display);font-size:28px;font-weight:700;line-height:1;text-align:right}
+.val small{display:block;font-family:var(--body);font-size:12px;font-weight:400;color:var(--muted);margin-top:4px}
+.bar{grid-column:2 / 4;height:8px;background:var(--azure-soft);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--azure);border-radius:4px}
+.row.first .bar i{background:var(--gold)}
+.more{display:block;width:100%;font:inherit;font-size:13px;font-weight:500;color:var(--azure);background:transparent;border:0;border-top:1px solid var(--line);padding:12px 0 10px;cursor:pointer}
+.note{font-size:12.5px;color:var(--muted);margin:10px 2px 0}
+
+/* store team board */
+.sub{margin-top:22px}
+.sub h3{font-size:22px;text-transform:uppercase}
+.divide{padding:14px 0 6px;border-top:1px solid var(--line);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.row.plain{padding:10px 0}
+.row.plain .val{font-size:22px}
+.row.plain .rank{font-size:22px}
+.row.plain .who{font-weight:500}
+.zeros{margin:0;padding:0 0 12px;color:var(--muted);font-size:13px}
+
+/* tables */
+.tw{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:9px 12px;text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+thead th{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);vertical-align:bottom}
+tbody th{font-weight:600;text-align:left}
+tbody tr+tr th,tbody tr+tr td{border-top:1px solid var(--line)}
+tfoot td,tfoot th{border-top:2px solid var(--ink);font-weight:600}
+td.heat{position:relative}
+td.heat span{display:inline-block;min-width:34px;padding:3px 8px;border-radius:5px;background:rgba(var(--cell),calc(var(--a) * .8));color:var(--ink)}
+td.heat span.hi{color:#fff}
+td.best span{box-shadow:0 0 0 2px var(--gold);font-weight:700}
+tr.zero th,tr.zero td{color:var(--muted)}
+td.left{text-align:left;white-space:normal;min-width:180px}
+.code{font-family:var(--display);font-size:18px;letter-spacing:.03em}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12.5px;color:var(--muted);margin:10px 2px 0;align-items:center}
+.legend .sw{display:inline-block;width:14px;height:14px;border-radius:4px;box-shadow:0 0 0 2px var(--gold);vertical-align:-3px;margin-right:6px;background:transparent}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.tabs button{font:inherit;font-size:14px;font-weight:600;padding:7px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--azure);border-color:var(--azure);color:#fff}
+.tabs button .r{font-weight:400;opacity:.8;margin-left:6px}
+.summary{display:flex;flex-wrap:wrap;gap:6px 28px;margin:0 0 12px;color:var(--muted);font-size:14px}
+.summary b{color:var(--ink);font-weight:600}
+footer{color:var(--muted);font-size:12.5px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:16px}
+footer p{margin:0;max-width:80ch}
+</style>
+
+<div class="wrap">
+  <div class="brand-banner">
+    <svg viewBox="0 0 1200 200" role="img" aria-label="Azure, Checkmate Pizza — banner with a wolf head badge on the left and a chess rook on the right, above a checkered strip">
+      <defs>
+        <linearGradient id="azureNight" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#0b1733"/>
+          <stop offset="55%" stop-color="#12296b"/>
+          <stop offset="100%" stop-color="#1f52ad"/>
+        </linearGradient>
+        <pattern id="checkerBig" width="80" height="80" patternUnits="userSpaceOnUse">
+          <rect width="40" height="40" fill="#ffffff" opacity="0.035"/>
+          <rect x="40" y="40" width="40" height="40" fill="#ffffff" opacity="0.035"/>
+        </pattern>
+        <pattern id="checkerStrip" width="24" height="24" patternUnits="userSpaceOnUse">
+          <rect width="12" height="12" fill="#f4f7fb"/>
+          <rect x="12" y="12" width="12" height="12" fill="#f4f7fb"/>
+          <rect x="12" y="0" width="12" height="12" fill="#0b1733"/>
+          <rect x="0" y="12" width="12" height="12" fill="#0b1733"/>
+        </pattern>
+      </defs>
+
+      <rect width="1200" height="200" rx="12" fill="url(#azureNight)"/>
+      <rect width="1200" height="200" rx="12" fill="url(#checkerBig)"/>
+      <rect y="186" width="1200" height="14" fill="url(#checkerStrip)"/>
+
+      <!-- night sky stars -->
+      <circle cx="210" cy="28" r="2" fill="#eef3fb" opacity="0.8"/>
+      <circle cx="245" cy="60" r="1.4" fill="#eef3fb" opacity="0.6"/>
+      <circle cx="270" cy="24" r="1.6" fill="#eef3fb" opacity="0.7"/>
+      <circle cx="905" cy="34" r="1.6" fill="#eef3fb" opacity="0.6"/>
+      <circle cx="875" cy="62" r="1.4" fill="#eef3fb" opacity="0.5"/>
+
+      <!-- wolf head, front-facing badge mark -->
+      <g transform="translate(50,32)">
+        <path d="
+          M 18 8
+          L 52 40
+          L 70 30
+          L 88 40
+          L 122 8
+          L 102 55
+          L 130 80
+          L 112 120
+          L 70 142
+          L 28 120
+          L 10 80
+          L 38 55
+          Z"
+          fill="#eef3fb"/>
+        <circle cx="52" cy="76" r="4.2" fill="#0b1733"/>
+        <circle cx="88" cy="76" r="4.2" fill="#0b1733"/>
+        <path d="M 62 108 L 78 108 L 70 122 Z" fill="#0b1733"/>
+      </g>
+
+      <!-- chess castle (rook), right side -->
+      <g transform="translate(1037,15) scale(0.8)">
+        <!-- stepped pedestal base -->
+        <rect x="20" y="188" width="80" height="16" rx="2" fill="#eef3fb"/>
+        <rect x="28" y="176" width="64" height="14" rx="2" fill="#eef3fb"/>
+        <rect x="34" y="166" width="52" height="12" rx="2" fill="#eef3fb"/>
+        <!-- tower body -->
+        <rect x="32" y="60" width="56" height="106" fill="#eef3fb"/>
+        <!-- battlements -->
+        <rect x="32" y="40" width="11" height="20" fill="#eef3fb"/>
+        <rect x="47" y="40" width="11" height="20" fill="#eef3fb"/>
+        <rect x="62" y="40" width="11" height="20" fill="#eef3fb"/>
+        <rect x="77" y="40" width="11" height="20" fill="#eef3fb"/>
+        <!-- arrow slit -->
+        <rect x="55" y="96" width="6" height="20" rx="2" fill="#12296b"/>
+      </g>
+
+      <!-- wordmark -->
+      <text x="600" y="98" text-anchor="middle" font-family="'Oswald', sans-serif" font-weight="700" font-size="56" letter-spacing="4" fill="#f6f9fd">AZURE</text>
+      <text x="600" y="134" text-anchor="middle" font-family="'Karla', sans-serif" font-weight="600" font-size="17" letter-spacing="6" fill="#a9c8ef">— CHECKMATE PIZZA —</text>
+    </svg>
+  </div>
+
+  <header class="mast">
+    <h1>Upsell Leaderboard</h1>
+    <p>{{PERIOD_NAME}} &middot; {{PERIOD}} &middot; Stores 3116, 3802, 3882, 5161, 5166, 8604</p>
+  </header>
+
+  <section class="hero" id="hero" aria-label="Overall leader"></section>
+
+  <section class="strip" id="strip" aria-label="Azure totals"></section>
+
+  <section>
+    <div class="sec-head">
+      <div>
+        <h2>Team Member Board</h2>
+        <p id="boardNote"></p>
+      </div>
+      <div class="seg" role="group" aria-label="Rank by">
+        <button type="button" id="mRate" aria-pressed="true">Upsell rate</button>
+        <button type="button" id="mCount" aria-pressed="false">Upsell orders</button>
+      </div>
+    </div>
+    <div class="board" id="board"></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div>
+        <h2>Store Standings</h2>
+        <p>Ranked by upsell rate: team-member orders carrying a contest coupon &divide; all orders that team members took.</p>
+      </div>
+    </div>
+    <div class="board" id="stores"></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div>
+        <h2>Coupons by Store</h2>
+        <p>Team-member orders using each coupon code. The gold outline marks the store leading that code (ties are all outlined; codes with only single redemptions are left unmarked).</p>
+      </div>
+    </div>
+    <div class="tw"><table id="matrix"></table></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div>
+        <h2>Store Detail</h2>
+        <p>Pick a store to see its own team member board and its coupon codes.</p>
+      </div>
+    </div>
+    <div class="tabs" id="tabs" role="group" aria-label="Choose a store"></div>
+    <p class="summary" id="summary"></p>
+    <div class="sec-head sub">
+      <div>
+        <h3 id="sbTitle">Team member board</h3>
+        <p id="sbNote"></p>
+      </div>
+      <div class="seg" role="group" aria-label="Rank store team by">
+        <button type="button" id="sbRate" aria-pressed="true">Upsell rate</button>
+        <button type="button" id="sbCount" aria-pressed="false">Upsell orders</button>
+      </div>
+    </div>
+    <div class="board" id="storeBoard"></div>
+    <div class="sec-head sub">
+      <div>
+        <h3>Coupons</h3>
+        <p>Every coupon code for this store, with every team member who used it, most orders first.</p>
+      </div>
+    </div>
+    <div class="tw"><table id="detail"></table></div>
+  </section>
+
+  <footer>
+    <p><b>How it&rsquo;s counted.</b> Upsell orders are orders that used one of the contest coupons. Upsell rate is a team member&rsquo;s coupon orders divided by all orders they took (the &ldquo;TM Ord&rdquo; column in the report). Order counts, not item quantities, are used throughout.</p>
+    <p><b>Internet orders are not ranked.</b> Online orders apply coupons on their own, so they are excluded from every ranking and shown only as a memo column in Store Detail. Team members who worked in more than one store are combined into one line on the group board; each store&rsquo;s own board shows only their orders at that store.</p>
+    <p>DIP0226 has no redemptions in this period. Sources: {{SOURCES}}</p>
+  </footer>
+</div>
+
+<script>
+const DATA = /*DATA*/;
+const MIN_TM = 20;
+const fmt = n => n.toLocaleString('en-US');
+const pct = (a,b,d=1) => b ? (a/b*100).toFixed(d)+'%' : '0.0%';
+const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const stores = DATA.stores.map(s=>({...s,rate:s.ups/s.tmOrd}));
+const byRate = [...stores].sort((a,b)=>b.rate-a.rate);
+const people = DATA.people.map(p=>({...p,rate:p.ord/p.tm}));
+const storeLabel = p => p.stores.length>1 ? 'Stores '+p.stores.join(' + ') : 'Store '+p.stores[0];
+
+/* hero + strip */
+const qualified = people.filter(p=>p.tm>=MIN_TM).sort((a,b)=>b.rate-a.rate||b.ord-a.ord);
+const lead = qualified[0], topStore = byRate[0];
+document.getElementById('hero').innerHTML = `
+  <div>
+    <div class="eyebrow">Overall leader &middot; team member</div>
+    <div class="leader">${esc(lead.name)}</div>
+    <p class="where">${storeLabel(lead)}</p>
+    <div class="stats">
+      <div class="stat"><b class="num">${pct(lead.ord,lead.tm)}</b><span>Upsell rate</span></div>
+      <div class="stat"><b class="num">${lead.ord}</b><span>Upsell orders</span></div>
+      <div class="stat"><b class="num">${lead.tm}</b><span>Orders taken</span></div>
+    </div>
+  </div>
+  <div class="side">
+    <div class="eyebrow">Top store</div>
+    <div class="big">Store ${topStore.id}</div>
+    <p class="num">${pct(topStore.ups,topStore.tmOrd)} upsell rate &middot; ${topStore.ups} of ${fmt(topStore.tmOrd)} orders</p>
+  </div>`;
+const totUps = stores.reduce((a,s)=>a+s.ups,0), totTm = stores.reduce((a,s)=>a+s.tmOrd,0), totNet = stores.reduce((a,s)=>a+s.netOrd,0);
+document.getElementById('strip').innerHTML = `
+  <div><b class="num">${pct(totUps,totTm)}</b><span>Azure upsell rate</span></div>
+  <div><b class="num">${fmt(totUps)}</b><span>Team-member upsell orders</span></div>
+  <div><b class="num">${fmt(totTm)}</b><span>Team-member orders</span></div>
+  <div><b class="num">${fmt(totNet)}</b><span>Internet coupon orders (not ranked)</span></div>`;
+
+/* ranked rows */
+function rows(list, valFn, subFn, nameFn, maxV, first=true){
+  return list.map((x,i)=>`
+    <div class="row${i===0&&first?' first':''}">
+      <div class="rank num">${i+1}</div>
+      <div class="who">${nameFn(x)}</div>
+      <div class="val num">${valFn(x)}<small>${subFn(x)}</small></div>
+      <div class="bar" aria-hidden="true"><i style="width:${Math.max(1.5,maxV?x._v/maxV*100:0)}%"></i></div>
+    </div>`).join('');
+}
+let mode='rate', expanded=false;
+function renderBoard(){
+  const el=document.getElementById('board'), note=document.getElementById('boardNote');
+  let list;
+  if(mode==='rate'){
+    list=qualified.map(p=>({...p,_v:p.rate}));
+    note.textContent=`Ranked by upsell rate. Team members need at least ${MIN_TM} orders taken to qualify, so one lucky order can’t top the board.`;
+  } else {
+    list=[...people].filter(p=>p.ord>0).sort((a,b)=>b.ord-a.ord||b.rate-a.rate).map(p=>({...p,_v:p.ord}));
+    note.textContent='Ranked by total upsell orders across all coupon codes, with no minimum volume.';
+  }
+  const shown = expanded ? list : list.slice(0,10);
+  const maxV = Math.max(...list.map(x=>x._v));
+  el.innerHTML = rows(shown,
+    x=> mode==='rate'?pct(x.ord,x.tm):x.ord,
+    x=> mode==='rate'?`${x.ord} of ${x.tm} orders`:`${pct(x.ord,x.tm)} of ${x.tm} orders`,
+    x=>`${esc(x.name)}<small>${storeLabel(x)}</small>`, maxV)
+    + (list.length>10?`<button class="more" type="button" id="more">${expanded?'Show top 10':'Show all '+list.length}</button>`:'');
+  const m=document.getElementById('more'); if(m) m.onclick=()=>{expanded=!expanded;renderBoard();};
+  document.getElementById('mRate').setAttribute('aria-pressed',mode==='rate');
+  document.getElementById('mCount').setAttribute('aria-pressed',mode==='count');
+}
+document.getElementById('mRate').onclick=()=>{mode='rate';expanded=false;renderBoard();};
+document.getElementById('mCount').onclick=()=>{mode='count';expanded=false;renderBoard();};
+renderBoard();
+
+/* stores */
+document.getElementById('stores').innerHTML = rows(byRate.map(s=>({...s,_v:s.rate})),
+  s=>pct(s.ups,s.tmOrd), s=>`${s.ups} of ${fmt(s.tmOrd)} orders`, s=>`Store ${s.id}`, byRate[0].rate);
+
+/* matrix */
+const coupons = DATA.coupons;
+let maxCell = 0; stores.forEach(s=>coupons.forEach(c=>{maxCell=Math.max(maxCell,s.by[c].tm)}));
+let mh = `<thead><tr><th>Coupon</th>${stores.map(s=>`<th>${s.id}</th>`).join('')}<th>Azure</th></tr></thead><tbody>`;
+coupons.forEach(c=>{
+  const vals=stores.map(s=>s.by[c].tm), best=Math.max(...vals), tot=vals.reduce((a,b)=>a+b,0), nb=vals.filter(v=>v===best).length, mark=best>0&&(nb===1||best>=2);
+  mh += `<tr class="${tot===0?'zero':''}"><th scope="row"><span class="code">${c}</span></th>`+
+    stores.map((s,i)=>{const v=vals[i], a=v/maxCell;
+      return `<td class="heat${v===best&&mark?' best':''}"><span class="num${a>.55?' hi':''}" style="--a:${a.toFixed(3)}">${v}</span></td>`}).join('')+
+    `<td class="num"><b>${tot}</b></td></tr>`;
+});
+mh += `</tbody><tfoot><tr><th scope="row">All coupons</th>${stores.map(s=>`<td class="num">${s.ups}</td>`).join('')}<td class="num">${totUps}</td></tr></tfoot>`;
+document.getElementById('matrix').innerHTML = mh;
+
+/* store detail */
+let sel = topStore.id;
+function renderDetail(){
+  document.getElementById('tabs').innerHTML = stores.map(s=>{
+    const r=byRate.findIndex(x=>x.id===s.id)+1;
+    return `<button type="button" data-id="${s.id}" aria-pressed="${s.id===sel}">${s.id}<span class="r">#${r}</span></button>`;}).join('');
+  document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{sel=b.dataset.id;renderDetail();});
+  const s=stores.find(x=>x.id===sel);
+  document.getElementById('summary').innerHTML =
+    `<span><b>Store ${s.id}</b> &middot; #${byRate.findIndex(x=>x.id===s.id)+1} of 6</span>`+
+    `<span><b class="num">${pct(s.ups,s.tmOrd)}</b> upsell rate</span>`+
+    `<span><b class="num">${s.ups}</b> of ${fmt(s.tmOrd)} team-member orders</span>`;
+  renderStoreBoard(s);
+  const list=[...coupons].sort((a,b)=>s.by[b].tm-s.by[a].tm||s.by[b].net-s.by[a].net);
+  const maxTm=Math.max(...list.map(c=>s.by[c].tm),1);
+  let h=`<thead><tr><th>Coupon</th><th>Team-member orders</th><th>Share of orders</th><th>Internet orders (memo)</th><th style="text-align:left">Team members (orders)</th></tr></thead><tbody>`;
+  list.forEach(c=>{const b=s.by[c];
+    const top=b.top.length? b.top.map(t=>`${esc(t.n)} (${t.v})`).join(', ') : '<span style="color:var(--muted)">&mdash;</span>';
+    h+=`<tr class="${b.tm===0&&b.net===0?'zero':''}"><th scope="row"><span class="code">${c}</span></th>
+      <td class="num">${b.tm}</td><td class="num">${pct(b.tm,s.tmOrd)}</td><td class="num">${b.net}</td><td class="left">${top}</td></tr>`;});
+  h+=`</tbody><tfoot><tr><th scope="row">All coupons</th><td class="num">${s.ups}</td><td class="num">${pct(s.ups,s.tmOrd)}</td><td class="num">${fmt(s.netOrd)}</td><td></td></tr></tfoot>`;
+  document.getElementById('detail').innerHTML=h;
+}
+const MIN_STORE = 10;
+let sbMode='rate';
+function renderStoreBoard(s){
+  const team=s.team.map(p=>({...p,rate:p.o/p.t}));
+  const el=document.getElementById('storeBoard'), note=document.getElementById('sbNote');
+  document.getElementById('sbTitle').textContent=`Team member board \u00b7 Store ${s.id}`;
+  document.getElementById('sbRate').setAttribute('aria-pressed',sbMode==='rate');
+  document.getElementById('sbCount').setAttribute('aria-pressed',sbMode==='count');
+  let ranked, others, otherLabel;
+  if(sbMode==='rate'){
+    ranked=team.filter(p=>p.t>=MIN_STORE).sort((a,b)=>b.rate-a.rate||b.o-a.o||a.n.localeCompare(b.n));
+    others=team.filter(p=>p.t<MIN_STORE).sort((a,b)=>b.o-a.o||b.rate-a.rate||a.n.localeCompare(b.n));
+    otherLabel=`Under ${MIN_STORE} orders \u2014 not ranked`;
+    note.textContent=`Ranked by upsell rate at this store. Team members need ${MIN_STORE}+ orders taken to be ranked; everyone else is listed below.`;
+  } else {
+    ranked=team.filter(p=>p.o>0).sort((a,b)=>b.o-a.o||b.rate-a.rate||a.n.localeCompare(b.n));
+    others=team.filter(p=>p.o===0).sort((a,b)=>b.t-a.t||a.n.localeCompare(b.n));
+    otherLabel='No upsell orders yet';
+    note.textContent='Ranked by upsell orders at this store, with no minimum volume.';
+  }
+  const list=ranked.map(p=>({...p,_v:sbMode==='rate'?p.rate:p.o}));
+  const maxV=Math.max(...list.map(x=>x._v),0);
+  let h = list.length
+    ? rows(list, x=>sbMode==='rate'?pct(x.o,x.t):x.o, x=>sbMode==='rate'?`${x.o} of ${x.t} orders`:`${pct(x.o,x.t)} of ${x.t} orders`, x=>esc(x.n), maxV)
+    : `<p class="zeros" style="padding-top:14px">No one has reached ${MIN_STORE} orders at this store yet.</p>`;
+  if(others.length){
+    h+=`<div class="divide">${otherLabel} (${others.length})</div>`;
+    if(sbMode==='rate'){
+      h+=others.map(p=>`<div class="row plain"><div class="rank num">&ndash;</div><div class="who">${esc(p.n)}</div><div class="val num">${pct(p.o,p.t)}<small>${p.o} of ${p.t} orders</small></div></div>`).join('');
+    } else {
+      h+=`<p class="zeros">${others.map(p=>`${esc(p.n)} (${p.t})`).join(', ')}</p>`;
+    }
+  }
+  el.innerHTML=h;
+}
+document.getElementById('sbRate').onclick=()=>{sbMode='rate';renderDetail();};
+document.getElementById('sbCount').onclick=()=>{sbMode='count';renderDetail();};
+renderDetail();
+</script>
