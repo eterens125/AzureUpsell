@@ -158,15 +158,28 @@ def main():
     if single:
         parts.append("single-day coupon reports for " + ", ".join(fmt_range(d, d) for d in single))
     sources_txt = " plus ".join(parts)
-    html = open(os.path.join(ROOT, "template.html")).read()
+    html = open(os.path.join(ROOT, "template.html"), encoding="utf-8").read()
     for k, v in {"{{PERIOD_NAME}}": PERIOD_NAME, "{{PERIOD}}": period, "{{SOURCES}}": sources_txt}.items():
         assert k in html, k
         html = html.replace(k, v)
     assert "/*DATA*/" in html
     html = html.replace("/*DATA*/", json.dumps(data, separators=(",", ":")))
+    # template.html is a bare content fragment (no doctype/html/head/body) by design,
+    # since the Claude Artifact publish flow supplies its own page skeleton with a
+    # UTF-8 charset at publish time. This standalone GitHub build has no such wrapper,
+    # so without an explicit <meta charset> a browser opening dist/index.html directly
+    # (or via a host that doesn't send a charset header) can guess the wrong encoding
+    # and mangle multi-byte characters like the em dash into "â€”" mojibake. Wrap it in
+    # a real document here so the charset is always declared.
+    html = (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n<head>\n<meta charset="UTF-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"{html}\n</head>\n<body></body>\n</html>\n"
+    )
     out = os.path.join(ROOT, "dist", "index.html")
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    open(out, "w").write(html)
+    open(out, "w", encoding="utf-8").write(html)
     ups = sum(s["ups"] for s in data["stores"]); tmo = sum(s["tmOrd"] for s in data["stores"])
     print(f"Built {out}\n  period: {period}\n  team-member upsell orders: {ups} of {tmo} ({ups / tmo:.1%})")
 
