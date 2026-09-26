@@ -19,18 +19,25 @@
   --cell:10,92,173;
   --display:'Barlow Condensed','Arial Narrow',sans-serif;
   --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  /* trend chart: one categorical hue per store, fixed order, never reassigned */
+  --series-3116:#2a78d6; --series-3802:#eb6834; --series-3882:#1baf7a;
+  --series-5161:#eda100; --series-5166:#e87ba4; --series-8604:#008300;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --ground:#08121F; --surface:#0F1E33; --ink:#E6EEF8; --muted:#8FA5C0; --line:#22384F;
     --azure:#4C9BE8; --azure-soft:#173352; --hero:#123761; --hero-ink:#F2F7FD; --hero-muted:#A9C1DD;
     --gold:#F2B233; --gold-ink:#F2B233; --cell:76,155,232;
+    --series-3116:#3987e5; --series-3802:#d95926; --series-3882:#199e70;
+    --series-5161:#c98500; --series-5166:#d55181; --series-8604:#008300;
   }
 }
 :root[data-theme="dark"]{
   --ground:#08121F; --surface:#0F1E33; --ink:#E6EEF8; --muted:#8FA5C0; --line:#22384F;
   --azure:#4C9BE8; --azure-soft:#173352; --hero:#123761; --hero-ink:#F2F7FD; --hero-muted:#A9C1DD;
   --gold:#F2B233; --gold-ink:#F2B233; --cell:76,155,232;
+  --series-3116:#3987e5; --series-3802:#d95926; --series-3882:#199e70;
+  --series-5161:#c98500; --series-5166:#d55181; --series-8604:#008300;
 }
 *{box-sizing:border-box}
 body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;padding-inline:clamp(16px,4vw,40px);padding-block:28px 56px}
@@ -130,6 +137,23 @@ td.left{text-align:left;white-space:normal;min-width:180px}
 .summary b{color:var(--ink);font-weight:600}
 footer{color:var(--muted);font-size:12.5px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:16px}
 footer p{margin:0;max-width:80ch}
+
+/* trend charts */
+.chart-pos{position:relative}
+.chartWrap{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px 14px}
+.chartWrap svg{width:100%;height:auto;display:block;overflow:visible}
+.chart-axis{font-size:11px;fill:var(--muted);font-family:var(--body)}
+.chart-dot{cursor:pointer}
+.chart-legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12.5px;color:var(--muted);margin:12px 2px 0}
+.chart-legend span{display:inline-flex;align-items:center}
+.chart-legend .sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px}
+.chart-legend .sw.line{height:3px;border-radius:2px}
+.chart-tip{position:absolute;pointer-events:none;background:var(--hero);color:var(--hero-ink);font-size:12.5px;line-height:1.4;padding:6px 10px;border-radius:7px;box-shadow:0 4px 14px rgba(11,23,51,.25);transform:translate(-50%,-120%);white-space:nowrap;opacity:0;transition:opacity .12s;z-index:2}
+.chart-tip.show{opacity:1}
+.chart-tip b{font-weight:600}
+.tblToggle{font:inherit;font-size:12.5px;font-weight:500;color:var(--azure);background:transparent;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.trendTable{margin-top:12px}
+.trendTable[hidden]{display:none}
 </style>
 
 <div class="wrap">
@@ -211,7 +235,7 @@ footer p{margin:0;max-width:80ch}
 
   <header class="mast">
     <h1>Upsell Leaderboard</h1>
-    <p>{{PERIOD_NAME}} &middot; {{PERIOD}} &middot; Stores 3116, 3802, 3882, 5161, 5166, 8604</p>
+    <p>{{PERIOD_NAME}} &middot; Stores 3116, 3802, 3882, 5161, 5166, 8604</p>
   </header>
 
   <section class="hero" id="hero" aria-label="Overall leader"></section>
@@ -255,6 +279,26 @@ footer p{margin:0;max-width:80ch}
   <section>
     <div class="sec-head">
       <div>
+        <h2>Progress Over Time</h2>
+        <p id="trendNote">Each point is one data update. Azure overall is the bold line; each store keeps its own color everywhere on this page.</p>
+      </div>
+      <div class="seg" role="group" aria-label="Trend metric">
+        <button type="button" id="tRate" aria-pressed="true">Upsell rate</button>
+        <button type="button" id="tCount" aria-pressed="false">Upsell orders</button>
+      </div>
+    </div>
+    <div class="chartWrap chart-pos">
+      <svg id="trendChart" viewBox="0 0 960 320" role="img" aria-label="Azure and per-store upsell progression over time"></svg>
+      <div class="chart-tip" id="trendTip"></div>
+    </div>
+    <div class="chart-legend" id="trendLegend"></div>
+    <p class="note"><button type="button" class="tblToggle" id="trendTblBtn">Show as table</button></p>
+    <div class="tw trendTable" id="trendTableWrap" hidden><table id="trendTable"></table></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div>
         <h2>Store Detail</h2>
         <p>Pick a store to see its own team member board and its coupon codes.</p>
       </div>
@@ -279,6 +323,16 @@ footer p{margin:0;max-width:80ch}
       </div>
     </div>
     <div class="tw"><table id="detail"></table></div>
+    <div class="sec-head sub">
+      <div>
+        <h3 id="stTitle">Progress at this store</h3>
+        <p>This store (bold) against Azure overall (dashed), using the metric selected above.</p>
+      </div>
+    </div>
+    <div class="chartWrap chart-pos">
+      <svg id="storeTrendChart" viewBox="0 0 960 240" role="img" aria-label="This store's upsell progression over time"></svg>
+      <div class="chart-tip" id="storeTrendTip"></div>
+    </div>
   </section>
 
   <footer>
@@ -392,6 +446,7 @@ function renderDetail(){
     `<span><b class="num">${pct(s.ups,s.tmOrd)}</b> upsell rate</span>`+
     `<span><b class="num">${s.ups}</b> of ${fmt(s.tmOrd)} team-member orders</span>`;
   renderStoreBoard(s);
+  if(typeof renderStoreTrend==='function') renderStoreTrend(s);
   const list=[...coupons].sort((a,b)=>s.by[b].tm-s.by[a].tm||s.by[b].net-s.by[a].net);
   const maxTm=Math.max(...list.map(c=>s.by[c].tm),1);
   let h=`<thead><tr><th>Coupon</th><th>Team-member orders</th><th>Share of orders</th><th>Internet orders (memo)</th><th style="text-align:left">Team members (orders)</th></tr></thead><tbody>`;
@@ -439,5 +494,98 @@ function renderStoreBoard(s){
 }
 document.getElementById('sbRate').onclick=()=>{sbMode='rate';renderDetail();};
 document.getElementById('sbCount').onclick=()=>{sbMode='count';renderDetail();};
+
+/* progress over time */
+const STORE_ORDER = Object.keys(DATA.trend.stores);
+const storeColor = id => `var(--series-${id})`;
+function niceCeil(v){
+  if(v<=0) return 1;
+  const mag=Math.pow(10,Math.floor(Math.log10(v))), norm=v/mag;
+  const n = norm<=1?1: norm<=2?2: norm<=2.5?2.5: norm<=5?5: 10;
+  return n*mag;
+}
+function trendVal(e){ return trendMode==='rate' ? (e.tmOrd? e.ups/e.tmOrd*100 : 0) : e.ups; }
+function drawTrend(svg, tipEl, series, labels, opts){
+  const W=960, H=opts.height, padL=opts.padL||46, padR=14, padT=14, padB=34;
+  const innerW=W-padL-padR, innerH=H-padT-padB, n=labels.length;
+  const maxV=niceCeil(Math.max(1,...series.flatMap(s=>s.values)));
+  const x=i=> n<=1 ? padL+innerW/2 : padL+innerW*i/(n-1);
+  const y=v=> padT+innerH-(v/maxV)*innerH;
+  const ticks=[0,1,2,3,4].map(t=>maxV*t/4);
+  let svgHtml='';
+  ticks.forEach(t=>{
+    const yy=y(t);
+    svgHtml+=`<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;
+    svgHtml+=`<text x="${padL-8}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-axis">${esc(opts.tickFmt(t))}</text>`;
+  });
+  labels.forEach((lb,i)=>{
+    svgHtml+=`<text x="${x(i).toFixed(1)}" y="${H-10}" text-anchor="middle" class="chart-axis">${esc(lb)}</text>`;
+  });
+  const ordered=[...series].sort((a,b)=>(a.bold?1:0)-(b.bold?1:0));
+  ordered.forEach(s=>{
+    const pts=s.values.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    svgHtml+=`<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="${s.bold?3.5:2}" stroke-linejoin="round" stroke-linecap="round" ${s.dashed?'stroke-dasharray="6,5"':''} opacity="${s.dim?0.4:1}"/>`;
+  });
+  ordered.forEach(s=>{
+    s.values.forEach((v,i)=>{
+      svgHtml+=`<circle class="chart-dot" data-s="${esc(s.label)}" data-l="${esc(labels[i])}" data-v="${esc(opts.valFmt(v))}" cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${s.bold?5:4}" fill="${s.color}" stroke="var(--surface)" stroke-width="2" opacity="${s.dim?0.4:1}"/>`;
+    });
+  });
+  svg.innerHTML=svgHtml;
+  svg.querySelectorAll('.chart-dot').forEach(d=>{
+    d.addEventListener('mouseenter',()=>{
+      const wrapR=svg.parentElement.getBoundingClientRect(), r=svg.getBoundingClientRect();
+      const cx=parseFloat(d.getAttribute('cx')), cy=parseFloat(d.getAttribute('cy'));
+      const px=(cx/W)*r.width+(r.left-wrapR.left), py=(cy/H)*r.height+(r.top-wrapR.top);
+      tipEl.innerHTML=`<b>${d.dataset.s}</b><br>${d.dataset.l}: ${d.dataset.v}`;
+      tipEl.style.left=px+'px'; tipEl.style.top=py+'px';
+      tipEl.classList.add('show');
+    });
+    d.addEventListener('mouseleave',()=>tipEl.classList.remove('show'));
+  });
+}
+let trendMode='rate';
+function trendSeries(){
+  return [{key:'azure',label:'Azure overall',color:'var(--ink)',bold:true,values:DATA.trend.azure.map(trendVal)}]
+    .concat(STORE_ORDER.map(id=>({key:id,label:'Store '+id,color:storeColor(id),values:DATA.trend.stores[id].map(trendVal)})));
+}
+function renderTrend(){
+  const series=trendSeries(), labels=DATA.trend.labels;
+  const tickFmt = trendMode==='rate' ? (v=>Math.round(v)+'%') : (v=>fmt(Math.round(v)));
+  const valFmt = trendMode==='rate' ? (v=>v.toFixed(1)+'%') : (v=>fmt(v));
+  drawTrend(document.getElementById('trendChart'), document.getElementById('trendTip'), series, labels, {height:320,tickFmt,valFmt});
+  document.getElementById('trendLegend').innerHTML = series.map(s=>
+    `<span><span class="sw line" style="background:${s.color}"></span>${esc(s.label)}</span>`).join('');
+  document.getElementById('tRate').setAttribute('aria-pressed',trendMode==='rate');
+  document.getElementById('tCount').setAttribute('aria-pressed',trendMode==='count');
+  renderTrendTable(series,labels,valFmt);
+}
+function renderTrendTable(series,labels,valFmt){
+  let h=`<thead><tr><th>Series</th>${labels.map(l=>`<th>${esc(l)}</th>`).join('')}</tr></thead><tbody>`;
+  series.forEach(s=>{
+    h+=`<tr><th scope="row">${esc(s.label)}</th>${s.values.map(v=>`<td class="num">${esc(valFmt(v))}</td>`).join('')}</tr>`;
+  });
+  h+=`</tbody>`;
+  document.getElementById('trendTable').innerHTML=h;
+}
+document.getElementById('tRate').onclick=()=>{trendMode='rate';renderTrend();renderStoreTrend(stores.find(x=>x.id===sel));};
+document.getElementById('tCount').onclick=()=>{trendMode='count';renderTrend();renderStoreTrend(stores.find(x=>x.id===sel));};
+document.getElementById('trendTblBtn').onclick=()=>{
+  const w=document.getElementById('trendTableWrap'), hidden=w.hasAttribute('hidden');
+  if(hidden) w.removeAttribute('hidden'); else w.setAttribute('hidden','');
+  document.getElementById('trendTblBtn').textContent = hidden?'Hide table':'Show as table';
+};
+function renderStoreTrend(s){
+  document.getElementById('stTitle').textContent=`Progress at Store ${s.id}`;
+  const labels=DATA.trend.labels;
+  const series=[
+    {key:'azure',label:'Azure overall',color:'var(--muted)',dashed:true,values:DATA.trend.azure.map(trendVal)},
+    {key:s.id,label:'Store '+s.id,color:storeColor(s.id),bold:true,values:DATA.trend.stores[s.id].map(trendVal)}
+  ];
+  const tickFmt = trendMode==='rate' ? (v=>Math.round(v)+'%') : (v=>fmt(Math.round(v)));
+  const valFmt = trendMode==='rate' ? (v=>v.toFixed(1)+'%') : (v=>fmt(v));
+  drawTrend(document.getElementById('storeTrendChart'), document.getElementById('storeTrendTip'), series, labels, {height:240,tickFmt,valFmt});
+}
+renderTrend();
 renderDetail();
 </script>

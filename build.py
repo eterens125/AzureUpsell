@@ -111,6 +111,37 @@ def fmt_range(s, e):
     return f"{d(s)} &ndash; {d(e)}" if s.month != e.month else f"{d(s)} &ndash; {e.day}"
 
 
+def fmt_range_txt(s, e):
+    """Like fmt_range but a plain '-' character for JS chart labels (no HTML entity)."""
+    d = lambda x: x.strftime("%b ") + str(x.day)
+    if s == e:
+        return d(s)
+    return f"{d(s)} – {d(e)}" if s.month != e.month else f"{d(s)} – {e.day}"
+
+
+def build_trend(df):
+    """One data point per report period (each distinct Begin/End Date range ingested),
+    in chronological order, so the page can chart progression update-by-update."""
+    tm = df[~df.internet]
+    stores = sorted(df.store.unique())
+    periods = sorted(set(zip(tm.start, tm.end)))
+    labels = [fmt_range_txt(s, e) for s, e in periods]
+    azure, per_store = [], {s: [] for s in stores}
+    for s0, e0 in periods:
+        sub = tm[(tm.start == s0) & (tm.end == e0)]
+        coupon_set = set(sub.coupon)
+        ref = "5073" if "5073" in coupon_set else sorted(coupon_set)[0]
+        a_ups = a_tm = 0
+        for st in stores:
+            t = sub[sub.store == st]
+            ups, tmo = int(t.ord.sum()), int(t[t.coupon == ref].tm.sum())
+            per_store[st].append(dict(ups=ups, tmOrd=tmo))
+            a_ups += ups
+            a_tm += tmo
+        azure.append(dict(ups=a_ups, tmOrd=a_tm))
+    return dict(labels=labels, azure=azure, stores=per_store)
+
+
 def build_data(df):
     coupons = MIN_COUPON_ORDER + sorted(set(df.coupon) - set(MIN_COUPON_ORDER))
     stores = sorted(df.store.unique())
@@ -138,7 +169,7 @@ def build_data(df):
         tmo = int(g[g.coupon == ref].tm.sum())
         if tmo > 0:
             people.append(dict(name=nice(name), stores=sorted(g.store.unique()), ord=int(g.ord.sum()), tm=tmo))
-    return dict(stores=S, coupons=coupons, people=people)
+    return dict(stores=S, coupons=coupons, people=people, trend=build_trend(df))
 
 
 def main():
