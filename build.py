@@ -159,7 +159,7 @@ def main():
         parts.append("single-day coupon reports for " + ", ".join(fmt_range(d, d) for d in single))
     sources_txt = " plus ".join(parts)
     html = open(os.path.join(ROOT, "template.html"), encoding="utf-8").read()
-    for k, v in {"{{PERIOD_NAME}}": PERIOD_NAME, "{{PERIOD}}": period, "{{SOURCES}}": sources_txt}.items():
+    for k, v in {"{{PERIOD_NAME}}": PERIOD_NAME, "{{SOURCES}}": sources_txt}.items():
         assert k in html, k
         html = html.replace(k, v)
     assert "/*DATA*/" in html
