@@ -53,33 +53,50 @@ def parse_sheet(ws, coupon):
 
 
 def load_sources():
-    rows, sources = [], []
     files = sorted(glob.glob(os.path.join(ROOT, "data", "*.xlsx")) + glob.glob(os.path.join(ROOT, "data", "daily", "*.xlsx")))
     if not files:
         sys.exit("No .xlsx files found in ./data")
+    # pass 1: read each sheet's own Begin/End Date header (workbooks kept open for pass 2)
+    meta = []
     for f in files:
         wb = openpyxl.load_workbook(f, data_only=True)
         for ws in wb.worksheets:
             coupon = (re.split(r"[_-]", os.path.splitext(os.path.basename(f))[0])[-1] if ws.title == "repUpsell" else ws.title).upper()
             start, end = header_dates(ws)
-            part = parse_sheet(ws, coupon)
-            # sanity: rows must equal the report's own store total rows
-            tot = {}
-            store = None
-            for r in ws.iter_rows(min_row=5, values_only=True):
-                if r[1] and r[5] in ("", None) and r[6] in ("", None):
-                    store = r[1]
-                elif r[1] in ("", None) and r[6] not in ("", None):
-                    tot[store] = (float(r[7] or 0), float(r[8] or 0))
-            for s, (o, t) in tot.items():
-                po = sum(x["ord"] for x in part if x["store"] == s)
-                pt = sum(x["tm"] for x in part if x["store"] == s)
-                if (po, pt) != (o, t):
-                    raise ValueError(f"{os.path.basename(f)} [{coupon}] store {s}: rows ({po},{pt}) != report total ({o},{t})")
-            for x in part:
-                x["start"], x["end"] = start, end
-            rows += part
-            sources.append((start, end, os.path.basename(f), coupon))
+            meta.append(dict(f=f, ws=ws, coupon=coupon, start=start, end=end))
+    # Domino's reports sometimes share a boundary day: one report's End Date is the next
+    # report's Begin Date for the same coupon. Rather than refuse (or double-count that
+    # day), nudge the later report's effective start to the day after - its full totals
+    # still can't be split by day, so that one day's count comes from the earlier report.
+    by_coupon_end = {}
+    for m in sorted(meta, key=lambda m: (m["coupon"], m["start"])):
+        c = m["coupon"]
+        prev_end = by_coupon_end.get(c)
+        if prev_end is not None and m["start"] == prev_end:
+            m["start"] = m["start"] + dt.timedelta(days=1)
+        by_coupon_end[c] = max(by_coupon_end.get(c, m["end"]), m["end"])
+    # pass 2: parse rows using the (possibly nudged) start date
+    rows, sources = [], []
+    for m in meta:
+        f, ws, coupon, start, end = m["f"], m["ws"], m["coupon"], m["start"], m["end"]
+        part = parse_sheet(ws, coupon)
+        # sanity: rows must equal the report's own store total rows
+        tot = {}
+        store = None
+        for r in ws.iter_rows(min_row=5, values_only=True):
+            if r[1] and r[5] in ("", None) and r[6] in ("", None):
+                store = r[1]
+            elif r[1] in ("", None) and r[6] not in ("", None):
+                tot[store] = (float(r[7] or 0), float(r[8] or 0))
+        for s, (o, t) in tot.items():
+            po = sum(x["ord"] for x in part if x["store"] == s)
+            pt = sum(x["tm"] for x in part if x["store"] == s)
+            if (po, pt) != (o, t):
+                raise ValueError(f"{os.path.basename(f)} [{coupon}] store {s}: rows ({po},{pt}) != report total ({o},{t})")
+        for x in part:
+            x["start"], x["end"] = start, end
+        rows += part
+        sources.append((start, end, os.path.basename(f), coupon))
     return pd.DataFrame(rows), sources
 
 
