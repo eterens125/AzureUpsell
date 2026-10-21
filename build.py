@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the Azure Upsell Leaderboard page from the Domino's "UPSELL BY TM" reports.
 
-Usage:  python3 build.py            # reads ./data, writes ./dist/index.html
+Usage:  python3 build.py [--rollup]   # reads ./data, writes ./dist/index.html
 
 Inputs (drop new files in ./data):
   * a multi-sheet period workbook  - one sheet per coupon code (sheet name = code)
@@ -15,7 +15,11 @@ import openpyxl
 import pandas as pd
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-PERIOD_NAME = "Period 10 to date"
+# Domino's 4-week fiscal periods. A report must fall wholly inside one of them.
+PERIOD_DEFS = [
+    dict(id="P10", name="Period 10", start="2026-09-07", end="2026-10-04"),
+    dict(id="P11", name="Period 11", start="2026-10-05", end="2026-11-02"),
+]
 MIN_COUPON_ORDER = ["917526", "8255", "1126", "5385", "4342", "8210", "8253", "8225", "5073", "8666", "DIP0226"]
 
 
@@ -52,10 +56,12 @@ def parse_sheet(ws, coupon):
     return rows
 
 
-def load_sources():
+def load_sources(through=None):
+    """Parse every report in ./data. `through` is the last day already folded into
+    baseline.json: reports ending on/before it are skipped, one that straddles it is refused."""
     files = sorted(glob.glob(os.path.join(ROOT, "data", "*.xlsx")) + glob.glob(os.path.join(ROOT, "data", "daily", "*.xlsx")))
     if not files:
-        sys.exit("No .xlsx files found in ./data")
+        return pd.DataFrame(), []
     # pass 1: read each sheet's own Begin/End Date header (workbooks kept open for pass 2)
     meta = []
     for f in files:
@@ -71,10 +77,19 @@ def load_sources():
     by_coupon_end = {}
     for m in sorted(meta, key=lambda m: (m["coupon"], m["start"])):
         c = m["coupon"]
-        prev_end = by_coupon_end.get(c)
+        prev_end = by_coupon_end.get(c, through)
         if prev_end is not None and m["start"] == prev_end:
             m["start"] = m["start"] + dt.timedelta(days=1)
         by_coupon_end[c] = max(by_coupon_end.get(c, m["end"]), m["end"])
+    if through is not None:
+        skipped = {os.path.basename(m["f"]) for m in meta if m["end"] <= through}
+        if skipped:
+            print(f"  skipping {len(skipped)} report file(s) already in baseline.json (through {through})")
+        straddle = [m for m in meta if m["end"] > through >= m["start"]]
+        if straddle:
+            m = straddle[0]
+            sys.exit(f"{os.path.basename(m['f'])} ({m['start']}..{m['end']}) overlaps days already in baseline.json (through {through}); a day would be counted twice.")
+        meta = [m for m in meta if m["end"] > through]
     # pass 2: parse rows using the (possibly nudged) start date
     rows, sources = [], []
     for m in meta:
@@ -159,7 +174,7 @@ def build_trend(df):
     return dict(labels=labels, azure=azure, stores=per_store)
 
 
-def build_data(df):
+def build_data(df, with_codes=False):
     coupons = MIN_COUPON_ORDER + sorted(set(df.coupon) - set(MIN_COUPON_ORDER))
     stores = sorted(df.store.unique())
     tm, net = df[~df.internet], df[df.internet]
@@ -185,33 +200,149 @@ def build_data(df):
     for (name, code), g in tm.groupby(["name", "code"]):
         tmo = int(g[g.coupon == ref].tm.sum())
         if tmo > 0:
-            people.append(dict(name=nice(name), stores=sorted(g.store.unique()), ord=int(g.ord.sum()), tm=tmo))
+            p = dict(name=nice(name), stores=sorted(g.store.unique()), ord=int(g.ord.sum()), tm=tmo)
+            if with_codes:
+                p["code"] = code
+            people.append(p)
     return dict(stores=S, coupons=coupons, people=people, trend=build_trend(df))
 
 
-def main():
-    df, sources = load_sources()
-    check_overlap(sources)
-    data = build_data(df)
-    ranges = merge_ranges([(s, e) for s, e, _, _ in sources])
-    period = " plus ".join(fmt_range(s, e) for s, e in ranges) + f", {ranges[-1][1].year}"
-    span = {}
-    for s, e, f, c in sources:
-        span.setdefault(f, (s, e))
-    multi = sorted({(s, e) for f, (s, e) in span.items() if s != e})
-    single = sorted({s for f, (s, e) in span.items() if s == e})
+def merge_data(base, new, notes):
+    """Add the DATA of newly ingested reports (`new`, people carry employee `code`) onto the
+    aggregate baseline DATA. Everything is keyed by 'First L.'; ambiguous people matches are
+    appended to `notes` for a human to look at."""
+    out = json.loads(json.dumps(base))
+    coupons = list(out["coupons"]) + [c for c in new["coupons"] if c not in out["coupons"]]
+    out["coupons"] = coupons
+    nstores = {s["id"]: s for s in new["stores"]}
+    for bs in out["stores"]:
+        ns = nstores.pop(bs["id"], None)
+        if ns is None:
+            continue
+        for k in ("tmOrd", "ups", "netOrd", "netTm"):
+            bs[k] += ns[k]
+        for c in coupons:
+            b = bs["by"].setdefault(c, dict(tm=0, net=0, top=[]))
+            n = ns["by"].get(c, dict(tm=0, net=0, top=[]))
+            b["tm"] += n["tm"]; b["net"] += n["net"]
+            tot = {}
+            for x in b["top"] + n["top"]:
+                tot[x["n"]] = tot.get(x["n"], 0) + x["v"]
+            b["top"] = [dict(n=k, v=v) for k, v in sorted(tot.items(), key=lambda kv: (-kv[1], kv[0]))]
+        team = {x["n"]: dict(x) for x in bs["team"]}
+        for x in ns["team"]:
+            if x["n"] in team:
+                team[x["n"]]["o"] += x["o"]; team[x["n"]]["t"] += x["t"]
+            else:
+                team[x["n"]] = dict(x)
+        bs["team"] = list(team.values())
+    if nstores:
+        sys.exit(f"new reports contain store(s) {sorted(nstores)} that are not in baseline.json")
+    # people: the baseline keeps no employee codes, so a new record is merged into an existing
+    # "First L." only when they share a store; same name with no shared store becomes its own
+    # entry (and is reported), the same way two same-named people are already kept apart.
+    people = [dict(p) for p in out["people"]]
+    claimed = {}
+    for np_ in new["people"]:
+        same = [p for p in people if p["name"] == np_["name"]]
+        hit = [p for p in same if set(p["stores"]) & set(np_["stores"])]
+        if not hit:
+            if same:
+                notes.append(f"{np_['name']} ({','.join(np_['stores'])}, {np_['ord']}/{np_['tm']}) has the same name as an existing person "
+                             f"at other store(s) - kept as a separate person")
+            people.append({k: v for k, v in np_.items() if k != "code"})
+            continue
+        if len(hit) > 1:
+            notes.append(f"{np_['name']} ({','.join(np_['stores'])}) shares a store with {len(hit)} existing people - merged into the largest")
+        p = max(hit, key=lambda p: p["tm"])
+        if id(p) in claimed and claimed[id(p)] != np_["code"]:
+            notes.append(f"{np_['name']}: two different employee codes in the new reports share a store with one existing person - check")
+        claimed[id(p)] = np_["code"]
+        p["ord"] += np_["ord"]; p["tm"] += np_["tm"]
+        p["stores"] = sorted(set(p["stores"]) | set(np_["stores"]))
+    out["people"] = people
+    t, nt = out["trend"], new["trend"]
+    t["labels"] += nt["labels"]
+    t["azure"] += nt["azure"]
+    for sid, pts in nt["stores"].items():
+        t["stores"][sid] += pts
+    # invariants
+    for s in out["stores"]:
+        assert sum(x["o"] for x in s["team"]) == s["ups"] and sum(x["t"] for x in s["team"]) == s["tmOrd"], s["id"]
+        assert sum(x["v"] for x in s["by"][coupons[0]]["top"]) == s["by"][coupons[0]]["tm"], s["id"]
+    assert sum(p["ord"] for p in out["people"]) == sum(s["ups"] for s in out["stores"])
+    assert sum(p["tm"] for p in out["people"]) == sum(s["tmOrd"] for s in out["stores"])
+    assert len(t["labels"]) == len(t["azure"]) == len(next(iter(t["stores"].values())))
+    assert sum(a["ups"] for a in t["azure"]) == sum(s["ups"] for s in out["stores"])
+    return out
+
+
+def sources_text(spans):
+    multi = sorted({(s, e) for s, e in spans if s != e})
+    single = sorted({s for s, e in spans if s == e})
     parts = []
     if multi:
         parts.append("the UPSELL BY TM report (" + ", ".join(fmt_range(s, e) for s, e in multi) + ")")
     if single:
         parts.append("single-day coupon reports for " + ", ".join(fmt_range(d, d) for d in single))
-    sources_txt = " plus ".join(parts)
+    return " plus ".join(parts)
+
+
+def load_baseline():
+    """data/baseline.json holds, per period, only 'First L.' aggregates (no names, no employee codes)."""
+    path = os.path.join(ROOT, "data", "baseline.json")
+    saved = {p["id"]: p for p in json.load(open(path, encoding="utf-8"))["periods"]} if os.path.exists(path) else {}
+    periods = []
+    for d in PERIOD_DEFS:
+        p = saved.get(d["id"], {})
+        day = dt.date.fromisoformat
+        periods.append(dict(d, data=p.get("data"),
+                            spans=[(day(a), day(b)) for a, b in p.get("spans", [])],
+                            through=day(p["through"]) if p.get("through") else day(d["start"]) - dt.timedelta(days=1)))
+    return path, periods
+
+
+def main():
+    args = sys.argv[1:]
+    rollup = "--rollup" in args                      # fold current reports into data/baseline.json
+    frag = args[args.index("--fragment") + 1] if "--fragment" in args else None
+    bpath, periods = load_baseline()
+    through = max(p["through"] for p in periods)
+    df, sources = load_sources(through)
+    check_overlap(sources)
+    notes = []
+    for p in periods:
+        lo, hi = dt.date.fromisoformat(p["start"]), dt.date.fromisoformat(p["end"])
+        if len(df):
+            sub = df[(df.start >= lo) & (df.start <= hi)]
+            if len(sub) and (sub.end > hi).any():
+                bad = sub[sub.end > hi].iloc[0]
+                sys.exit(f"A report ({bad.start}..{bad.end}) starts in {p['name']} but runs past its end ({hi}); reports must sit inside one period.")
+        else:
+            sub = df
+        if len(sub):
+            if p["data"]:
+                p["data"] = merge_data(p["data"], build_data(sub, with_codes=True), notes)
+            else:
+                p["data"] = build_data(sub)
+            p["spans"] += sorted({(s, e) for s, e, _, _ in sources if lo <= s <= hi})
+            p["through"] = max(p["through"], max(e for s, e, _, _ in sources if lo <= s <= hi))
+    covered = len(df) and sum(len(df[(df.start >= dt.date.fromisoformat(p["start"])) & (df.start <= dt.date.fromisoformat(p["end"]))]) for p in periods)
+    if len(df) and covered != len(df):
+        sys.exit("some reports fall outside every defined period (see PERIOD_DEFS in build.py)")
+    live = [p for p in periods if p["data"]]
+    if not live:
+        sys.exit("no reports in ./data and no baseline.json")
+    for p in live:
+        for x in p["data"]["people"]:
+            x.pop("code", None)                      # employee codes never leave the raw reports
+    page = [dict(id=p["id"], name=p["name"], start=p["start"], end=p["end"], final=p["through"] >= dt.date.fromisoformat(p["end"]),
+                 sources=sources_text(p["spans"]), data=p["data"]) for p in live]
     html = open(os.path.join(ROOT, "template.html"), encoding="utf-8").read()
-    for k, v in {"{{PERIOD_NAME}}": PERIOD_NAME, "{{SOURCES}}": sources_txt}.items():
-        assert k in html, k
-        html = html.replace(k, v)
     assert "/*DATA*/" in html
-    html = html.replace("/*DATA*/", json.dumps(data, separators=(",", ":")))
+    html = html.replace("/*DATA*/", json.dumps(page, separators=(",", ":")))
+    if frag:                                          # bare fragment for the Claude Artifact publish flow
+        open(frag, "w", encoding="utf-8").write(html)
     # template.html is a bare content fragment (no doctype/html/head/body) by design,
     # since the Claude Artifact publish flow supplies its own page skeleton with a
     # UTF-8 charset at publish time. This standalone GitHub build has no such wrapper,
@@ -228,8 +359,18 @@ def main():
     out = os.path.join(ROOT, "dist", "index.html")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     open(out, "w", encoding="utf-8").write(html)
-    ups = sum(s["ups"] for s in data["stores"]); tmo = sum(s["tmOrd"] for s in data["stores"])
-    print(f"Built {out}\n  period: {period}\n  team-member upsell orders: {ups} of {tmo} ({ups / tmo:.1%})")
+    if rollup and len(df):
+        json.dump(dict(periods=[dict(id=p["id"], through=p["through"].isoformat(), data=p["data"],
+                                     spans=[[a.isoformat(), b.isoformat()] for a, b in p["spans"]]) for p in periods if p["data"]]),
+                  open(bpath, "w", encoding="utf-8"), separators=(",", ":"))
+        print("  baseline.json updated: " + ", ".join(f"{p['id']} through {p['through']}" for p in periods if p["data"]))
+    print(f"Built {out}")
+    for p in live:
+        d = p["data"]
+        ups = sum(s["ups"] for s in d["stores"]); tmo = sum(s["tmOrd"] for s in d["stores"])
+        print(f"  {p['name']}: through {p['through']}, team-member upsell orders {ups} of {tmo} ({ups / tmo:.1%})")
+    for n in notes:
+        print("  NOTE:", n)
 
 
 if __name__ == "__main__":

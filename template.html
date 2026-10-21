@@ -129,6 +129,10 @@ td.left{text-align:left;white-space:normal;min-width:180px}
 .code{font-family:var(--display);font-size:18px;letter-spacing:.03em}
 .legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12.5px;color:var(--muted);margin:10px 2px 0;align-items:center}
 .legend .sw{display:inline-block;width:14px;height:14px;border-radius:4px;box-shadow:0 0 0 2px var(--gold);vertical-align:-3px;margin-right:6px;background:transparent}
+.ptabs{display:flex;flex-wrap:wrap;gap:10px;margin:2px 0 0}
+.ptabs button{font:inherit;font-size:15px;font-weight:700;padding:9px 18px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);cursor:pointer;text-align:left;line-height:1.25}
+.ptabs button small{display:block;font-size:12px;font-weight:400;opacity:.8}
+.ptabs button[aria-pressed="true"]{background:var(--azure);border-color:var(--azure);color:#fff}
 .tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .tabs button{font:inherit;font-size:14px;font-weight:600;padding:7px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);cursor:pointer}
 .tabs button[aria-pressed="true"]{background:var(--azure);border-color:var(--azure);color:#fff}
@@ -235,8 +239,10 @@ footer p{margin:0;max-width:80ch}
 
   <header class="mast">
     <h1>Upsell Leaderboard</h1>
-    <p>{{PERIOD_NAME}} &middot; Stores 3116, 3802, 3882, 5161, 5166, 8604</p>
+    <p id="mastSub"></p>
   </header>
+
+  <div class="ptabs" id="ptabs" role="group" aria-label="Choose a period"></div>
 
   <section class="hero" id="hero" aria-label="Overall leader"></section>
 
@@ -338,24 +344,26 @@ footer p{margin:0;max-width:80ch}
   <footer>
     <p><b>How it&rsquo;s counted.</b> Upsell orders are orders that used one of the contest coupons. Upsell rate is a team member&rsquo;s coupon orders divided by all orders they took (the &ldquo;TM Ord&rdquo; column in the report). Order counts, not item quantities, are used throughout.</p>
     <p><b>Internet orders are not ranked.</b> Online orders apply coupons on their own, so they are excluded from every ranking and shown only as a memo column in Store Detail. Team members who worked in more than one store are combined into one line on the group board; each store&rsquo;s own board shows only their orders at that store.</p>
-    <p>DIP0226 has no redemptions in this period. Sources: {{SOURCES}}</p>
+    <p id="srcNote"></p>
   </footer>
 </div>
 
 <script>
-const DATA = /*DATA*/;
+const PERIODS = /*DATA*/;
+const STORE_IDS = '3116, 3802, 3882, 5161, 5166, 8604';
+let P = PERIODS[PERIODS.length-1], DATA = P.data;
 const MIN_TM = 20;
 const fmt = n => n.toLocaleString('en-US');
 const pct = (a,b,d=1) => b ? (a/b*100).toFixed(d)+'%' : '0.0%';
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const stores = DATA.stores.map(s=>({...s,rate:s.ups/s.tmOrd}));
-const byRate = [...stores].sort((a,b)=>b.rate-a.rate);
-const people = DATA.people.map(p=>({...p,rate:p.ord/p.tm}));
+let stores, byRate, people, qualified, lead, topStore, totUps, totTm, totNet, coupons, STORE_ORDER;
 const storeLabel = p => p.stores.length>1 ? 'Stores '+p.stores.join(' + ') : 'Store '+p.stores[0];
 
 /* hero + strip */
-const qualified = people.filter(p=>p.tm>=MIN_TM).sort((a,b)=>b.rate-a.rate||b.ord-a.ord);
-const lead = qualified[0], topStore = byRate[0];
+function renderTop(){
+qualified = people.filter(p=>p.tm>=MIN_TM).sort((a,b)=>b.rate-a.rate||b.ord-a.ord);
+lead = qualified[0] || [...people].sort((a,b)=>b.rate-a.rate||b.ord-a.ord)[0];
+topStore = byRate[0];
 document.getElementById('hero').innerHTML = `
   <div>
     <div class="eyebrow">Overall leader &middot; team member</div>
@@ -372,12 +380,13 @@ document.getElementById('hero').innerHTML = `
     <div class="big">Store ${topStore.id}</div>
     <p class="num">${pct(topStore.ups,topStore.tmOrd)} upsell rate &middot; ${topStore.ups} of ${fmt(topStore.tmOrd)} orders</p>
   </div>`;
-const totUps = stores.reduce((a,s)=>a+s.ups,0), totTm = stores.reduce((a,s)=>a+s.tmOrd,0), totNet = stores.reduce((a,s)=>a+s.netOrd,0);
+totUps = stores.reduce((a,s)=>a+s.ups,0); totTm = stores.reduce((a,s)=>a+s.tmOrd,0); totNet = stores.reduce((a,s)=>a+s.netOrd,0);
 document.getElementById('strip').innerHTML = `
   <div><b class="num">${pct(totUps,totTm)}</b><span>Azure upsell rate</span></div>
   <div><b class="num">${fmt(totUps)}</b><span>Team-member upsell orders</span></div>
   <div><b class="num">${fmt(totTm)}</b><span>Team-member orders</span></div>
   <div><b class="num">${fmt(totNet)}</b><span>Internet coupon orders (not ranked)</span></div>`;
+}
 
 /* ranked rows */
 function rows(list, valFn, subFn, nameFn, maxV, first=true){
@@ -413,14 +422,14 @@ function renderBoard(){
 }
 document.getElementById('mRate').onclick=()=>{mode='rate';expanded=false;renderBoard();};
 document.getElementById('mCount').onclick=()=>{mode='count';expanded=false;renderBoard();};
-renderBoard();
 
 /* stores */
+function renderStoresAndMatrix(){
 document.getElementById('stores').innerHTML = rows(byRate.map(s=>({...s,_v:s.rate})),
   s=>pct(s.ups,s.tmOrd), s=>`${s.ups} of ${fmt(s.tmOrd)} orders`, s=>`Store ${s.id}`, byRate[0].rate);
 
 /* matrix */
-const coupons = DATA.coupons;
+coupons = DATA.coupons;
 let maxCell = 0; stores.forEach(s=>coupons.forEach(c=>{maxCell=Math.max(maxCell,s.by[c].tm)}));
 let mh = `<thead><tr><th>Coupon</th>${stores.map(s=>`<th>${s.id}</th>`).join('')}<th>Azure</th></tr></thead><tbody>`;
 coupons.forEach(c=>{
@@ -432,9 +441,10 @@ coupons.forEach(c=>{
 });
 mh += `</tbody><tfoot><tr><th scope="row">All coupons</th>${stores.map(s=>`<td class="num">${s.ups}</td>`).join('')}<td class="num">${totUps}</td></tr></tfoot>`;
 document.getElementById('matrix').innerHTML = mh;
+}
 
 /* store detail */
-let sel = topStore.id;
+let sel = null;
 function renderDetail(){
   document.getElementById('tabs').innerHTML = stores.map(s=>{
     const r=byRate.findIndex(x=>x.id===s.id)+1;
@@ -496,7 +506,6 @@ document.getElementById('sbRate').onclick=()=>{sbMode='rate';renderDetail();};
 document.getElementById('sbCount').onclick=()=>{sbMode='count';renderDetail();};
 
 /* progress over time */
-const STORE_ORDER = Object.keys(DATA.trend.stores);
 const storeColor = id => `var(--series-${id})`;
 function niceCeil(v){
   if(v<=0) return 1;
@@ -586,6 +595,28 @@ function renderStoreTrend(s){
   const valFmt = trendMode==='rate' ? (v=>v.toFixed(1)+'%') : (v=>fmt(v));
   drawTrend(document.getElementById('storeTrendChart'), document.getElementById('storeTrendTip'), series, labels, {height:240,tickFmt,valFmt});
 }
-renderTrend();
-renderDetail();
+
+/* period tabs */
+function shortDate(iso){const [y,m,d]=iso.split('-').map(Number);return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]+' '+d;}
+function setPeriod(i){
+  P = PERIODS[i]; DATA = P.data;
+  stores = DATA.stores.map(s=>({...s,rate:s.ups/s.tmOrd}));
+  byRate = [...stores].sort((a,b)=>b.rate-a.rate);
+  people = DATA.people.map(p=>({...p,rate:p.ord/p.tm}));
+  STORE_ORDER = Object.keys(DATA.trend.stores);
+  mode='rate'; expanded=false; sbMode='rate';
+  document.getElementById('mastSub').innerHTML = `${esc(P.name)}${P.final?' &middot; Final':' to date'} &middot; Stores ${STORE_IDS}`;
+  document.getElementById('ptabs').innerHTML = PERIODS.map((p,j)=>
+    `<button type="button" data-i="${j}" aria-pressed="${j===i}">${esc(p.name)}<small>${shortDate(p.start)} &ndash; ${shortDate(p.end)}${p.final?' &middot; final':' &middot; in progress'}</small></button>`).join('');
+  document.querySelectorAll('#ptabs button').forEach(b=>b.onclick=()=>setPeriod(+b.dataset.i));
+  const unused = DATA.coupons.filter(c=>stores.every(s=>s.by[c].tm===0));
+  document.getElementById('srcNote').innerHTML = (unused.length? unused.join(', ')+(unused.length>1?' have':' has')+' no redemptions in this period. ' : '') + 'Sources: ' + P.sources;
+  document.getElementById('trendNote').textContent = DATA.trend.labels.length<2
+    ? 'Each point is one data update. This period has one update so far, so the trend lines will appear after the next one.'
+    : 'Each point is one data update. Azure overall is the bold line; each store keeps its own color everywhere on this page.';
+  renderTop(); renderBoard(); renderStoresAndMatrix();
+  sel = byRate[0].id;
+  renderTrend(); renderDetail();
+}
+setPeriod(PERIODS.length-1);
 </script>
